@@ -1,96 +1,78 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import Card from '../models/card';
-import isInvalidDataError from '../utils/errors';
+import NotFoundError from '../errors/not-found-error';
+import ForbiddenError from '../errors/forbidden-error';
 import {
-  BAD_REQUEST,
-  NOT_FOUND,
-  INTERNAL_SERVER_ERROR,
-  INVALID_DATA_MESSAGE,
   NOT_FOUND_MESSAGE,
-  SERVER_ERROR_MESSAGE,
+  FORBIDDEN_MESSAGE,
 } from '../utils/constants';
 
-export const getCards = async (req: Request, res: Response) => {
+export const getCards = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const cards = await Card.find({});
     res.status(200).json(cards);
   } catch (error) {
-    res.status(INTERNAL_SERVER_ERROR).json({ message: SERVER_ERROR_MESSAGE });
+    next(error);
   }
 };
 
-export const createCard = async (req: Request, res: Response) => {
+export const createCard = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { name, link } = req.body;
     const card = await Card.create({ name, link, owner: req.user._id });
     res.status(201).json(card);
   } catch (error) {
-    if (isInvalidDataError(error)) {
-      res.status(BAD_REQUEST).json({ message: INVALID_DATA_MESSAGE });
-      return;
-    }
-    res.status(INTERNAL_SERVER_ERROR).json({ message: SERVER_ERROR_MESSAGE });
+    next(error);
   }
 };
 
-export const deleteCard = async (req: Request, res: Response) => {
+export const deleteCard = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
-    const card = await Card.findByIdAndDelete(id);
+    const { cardId } = req.params;
+    const card = await Card.findById(cardId);
     if (!card) {
-      res.status(NOT_FOUND).json({ message: NOT_FOUND_MESSAGE });
-      return;
+      throw new NotFoundError(NOT_FOUND_MESSAGE);
     }
+    if (card.owner.toString() !== req.user._id) {
+      throw new ForbiddenError(FORBIDDEN_MESSAGE);
+    }
+    await card.deleteOne();
     res.status(200).json(card);
   } catch (error) {
-    if (isInvalidDataError(error)) {
-      res.status(BAD_REQUEST).json({ message: INVALID_DATA_MESSAGE });
-      return;
-    }
-    res.status(INTERNAL_SERVER_ERROR).json({ message: SERVER_ERROR_MESSAGE });
+    next(error);
   }
 };
 
-export const likeCard = async (req: Request, res: Response) => {
+export const likeCard = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
+    const { cardId } = req.params;
     const card = await Card.findByIdAndUpdate(
-      id,
+      cardId,
       { $addToSet: { likes: req.user._id } },
       { new: true },
     );
     if (!card) {
-      res.status(NOT_FOUND).json({ message: NOT_FOUND_MESSAGE });
-      return;
+      throw new NotFoundError(NOT_FOUND_MESSAGE);
     }
     res.status(200).json(card);
   } catch (error) {
-    if (isInvalidDataError(error)) {
-      res.status(BAD_REQUEST).json({ message: INVALID_DATA_MESSAGE });
-      return;
-    }
-    res.status(INTERNAL_SERVER_ERROR).json({ message: SERVER_ERROR_MESSAGE });
+    next(error);
   }
 };
 
-export const dislikeCard = async (req: Request, res: Response) => {
+export const dislikeCard = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
+    const { cardId } = req.params;
     const card = await Card.findByIdAndUpdate(
-      id,
+      cardId,
       { $pull: { likes: req.user._id } },
       { new: true },
     );
     if (!card) {
-      res.status(NOT_FOUND).json({ message: NOT_FOUND_MESSAGE });
-      return;
+      throw new NotFoundError(NOT_FOUND_MESSAGE);
     }
     res.status(200).json(card);
   } catch (error) {
-    if (isInvalidDataError(error)) {
-      res.status(BAD_REQUEST).json({ message: INVALID_DATA_MESSAGE });
-      return;
-    }
-    res.status(INTERNAL_SERVER_ERROR).json({ message: SERVER_ERROR_MESSAGE });
+    next(error);
   }
 };

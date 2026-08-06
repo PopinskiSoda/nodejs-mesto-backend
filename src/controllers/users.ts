@@ -1,56 +1,52 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import User from '../models/user';
-import isInvalidDataError from '../utils/errors';
+import UnauthorizedError from '../errors/unauthorized-error';
+import NotFoundError from '../errors/not-found-error';
 import {
-  BAD_REQUEST,
-  NOT_FOUND,
-  INTERNAL_SERVER_ERROR,
-  INVALID_DATA_MESSAGE,
+  INVALID_CREDENTIALS_MESSAGE,
   NOT_FOUND_MESSAGE,
-  SERVER_ERROR_MESSAGE,
 } from '../utils/constants';
 
-export const getUsers = async (req: Request, res: Response) => {
+export const getUsers = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const users = await User.find({});
     res.status(200).json(users);
   } catch (error) {
-    res.status(INTERNAL_SERVER_ERROR).json({ message: SERVER_ERROR_MESSAGE });
+    next(error);
   }
 };
 
-export const getUserById = async (req: Request, res: Response) => {
+export const getUserById = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const user = await User.findById(req.params.userId);
     if (!user) {
-      res.status(NOT_FOUND).json({ message: NOT_FOUND_MESSAGE });
-      return;
+      throw new NotFoundError(NOT_FOUND_MESSAGE);
     }
     res.status(200).json(user);
   } catch (error) {
-    if (isInvalidDataError(error)) {
-      res.status(BAD_REQUEST).json({ message: INVALID_DATA_MESSAGE });
-      return;
-    }
-    res.status(INTERNAL_SERVER_ERROR).json({ message: SERVER_ERROR_MESSAGE });
+    next(error);
   }
 };
 
-export const createUser = async (req: Request, res: Response) => {
+export const createUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, about, avatar } = req.body;
-    const user = await User.create({ name, about, avatar });
-    res.status(201).json(user);
+    const {
+      name, about, avatar, email, password,
+    } = req.body;
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({
+      name, about, avatar, email, password: hashedPassword,
+    });
+    const userWithoutPassword = await User.findById(user._id);
+    res.status(201).json(userWithoutPassword);
   } catch (error) {
-    if (isInvalidDataError(error)) {
-      res.status(BAD_REQUEST).json({ message: INVALID_DATA_MESSAGE });
-      return;
-    }
-    res.status(INTERNAL_SERVER_ERROR).json({ message: SERVER_ERROR_MESSAGE });
+    next(error);
   }
 };
 
-export const updateUserProfile = async (req: Request, res: Response) => {
+export const updateUserProfile = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { name, about } = req.body;
     const user = await User.findByIdAndUpdate(
@@ -59,20 +55,15 @@ export const updateUserProfile = async (req: Request, res: Response) => {
       { new: true, runValidators: true },
     );
     if (!user) {
-      res.status(NOT_FOUND).json({ message: NOT_FOUND_MESSAGE });
-      return;
+      throw new NotFoundError(NOT_FOUND_MESSAGE);
     }
     res.status(200).json(user);
   } catch (error) {
-    if (isInvalidDataError(error)) {
-      res.status(BAD_REQUEST).json({ message: INVALID_DATA_MESSAGE });
-      return;
-    }
-    res.status(INTERNAL_SERVER_ERROR).json({ message: SERVER_ERROR_MESSAGE });
+    next(error);
   }
 };
 
-export const updateUserAvatar = async (req: Request, res: Response) => {
+export const updateUserAvatar = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { avatar } = req.body;
     const user = await User.findByIdAndUpdate(
@@ -81,15 +72,40 @@ export const updateUserAvatar = async (req: Request, res: Response) => {
       { new: true, runValidators: true },
     );
     if (!user) {
-      res.status(NOT_FOUND).json({ message: NOT_FOUND_MESSAGE });
-      return;
+      throw new NotFoundError(NOT_FOUND_MESSAGE);
     }
     res.status(200).json(user);
   } catch (error) {
-    if (isInvalidDataError(error)) {
-      res.status(BAD_REQUEST).json({ message: INVALID_DATA_MESSAGE });
-      return;
+    next(error);
+  }
+};
+
+export const login = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email }).select('+password');
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      throw new UnauthorizedError(INVALID_CREDENTIALS_MESSAGE);
     }
-    res.status(INTERNAL_SERVER_ERROR).json({ message: SERVER_ERROR_MESSAGE });
+    const token = jwt.sign(
+      { _id: String(user._id) },
+      process.env.JWT_SECRET as string,
+      { expiresIn: '7d' },
+    );
+    res.status(200).json({ token });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getCurrentUser = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      throw new NotFoundError(NOT_FOUND_MESSAGE);
+    }
+    res.status(200).json(user);
+  } catch (error) {
+    next(error);
   }
 };

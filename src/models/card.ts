@@ -1,10 +1,11 @@
 import mongoose, { Schema } from 'mongoose';
+import URL_REGEX from '../utils/url-regex';
 
 interface ICard {
   name: string;
   link: string;
-  owner: string;
-  likes: string[];
+  owner: mongoose.Types.ObjectId;
+  likes: mongoose.Types.ObjectId[];
   createdAt: Date;
 }
 
@@ -18,6 +19,10 @@ const cardSchema = new Schema({
   link: {
     type: String,
     required: true,
+    validate: {
+      validator: (v: string) => URL_REGEX.test(v),
+      message: 'Некорректный URL изображения',
+    },
   },
   owner: {
     type: Schema.Types.ObjectId,
